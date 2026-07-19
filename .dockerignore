@@ -1,0 +1,98 @@
+# ============================================
+# VideoSaver - Root Docker Ignore
+# ============================================
+
+# Dependencies
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+.next
+dist
+out
+build
+.turbo
+
+# Testing
+coverage
+.nyc_output
+*.log
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Docker files
+docker-compose*.yml
+Dockerfile
+.dockerignore
+
+# Documentation
+*.md
+LICENSE
+docs
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+circle.yml
+
+# Misc
+*.tmp
+*.bak
+*.swp
+__pycache__
+*.pyc
+*.pyo
+*.class
+*.o
+*.obj
+*.lib
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+test
+tests
+__tests__
+*.spec.ts
+*.test.ts
+*.spec.js
+*.test.js
+e2e
+
+# Development files
+*.dev.ts
+*.dev.js
+dev.ts
+dev.js
+
+# Temporary files
+tmp
+temp
+.cache
+.parcel-cache

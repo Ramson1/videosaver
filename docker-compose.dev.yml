@@ -1,0 +1,78 @@
+version: "3.9"
+
+services:
+  # ─── NestJS API (dev mode with hot reload) ─
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: deps
+    container_name: videosaver-api-dev
+    command: npm run dev --workspace=apps/api
+    ports:
+      - "${API_PORT:-4000}:4000"
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-me}
+      - LOG_LEVEL=debug
+      - LOG_FORMAT=pretty
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
+      - api_tmp:/app/tmp
+    networks:
+      - videosaver-dev
+
+  # ─── Next.js Web (dev mode) ────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: deps
+    container_name: videosaver-web-dev
+    command: npm run dev --workspace=apps/web
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+      - NEXT_PUBLIC_API_URL=http://localhost:4000
+    depends_on:
+      - api
+    volumes:
+      - ./apps/web/src:/app/apps/web/src
+      - ./apps/web/public:/app/apps/web/public
+    networks:
+      - videosaver-dev
+
+  # ─── Redis ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: videosaver-redis-dev
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - videosaver-dev
+
+volumes:
+  redis_data:
+  api_tmp:
+
+networks:
+  videosaver-dev:
+    driver: bridge
