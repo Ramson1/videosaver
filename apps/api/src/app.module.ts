@@ -33,13 +33,19 @@ import { AdminModule } from './modules/admin/admin.module';
 
     // BullMQ Queue (Redis)
     BullModule.forRootAsync({
-      useFactory: () => ({
-        redis: {
-          host: process.env.REDIS_HOST || 'localhost',
-          port: parseInt(process.env.REDIS_PORT || '6379', 10),
-          password: process.env.REDIS_PASSWORD || undefined,
-        },
-      }),
+      useFactory: () => {
+        const redisUrl = process.env.REDIS_URL;
+        if (redisUrl) {
+          return { redis: redisUrl };
+        }
+        return {
+          redis: {
+            host: process.env.REDIS_HOST || 'localhost',
+            port: parseInt(process.env.REDIS_PORT || '6379', 10),
+            password: process.env.REDIS_PASSWORD || undefined,
+          },
+        };
+      },
     }),
 
     // Feature Modules
