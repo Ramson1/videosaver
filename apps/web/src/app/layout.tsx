@@ -5,8 +5,6 @@ import { Toaster } from 'sonner';
 import { Providers } from '@/components/providers';
 import './globals.css';
 
-export const dynamic = 'force-dynamic';
-
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
