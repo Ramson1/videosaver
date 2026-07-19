@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { SupabaseService } from '../auth/supabase.service';
 import { QueueService } from '../queue/queue.service';
 
@@ -8,7 +8,7 @@ export class AdminService {
 
   constructor(
     private readonly supabase: SupabaseService,
-    private readonly queueService: QueueService,
+    @Optional() private readonly queueService?: QueueService,
   ) {}
 
   /**
@@ -29,7 +29,7 @@ export class AdminService {
         .from('downloads')
         .select('id', { count: 'exact', head: true })
         .gte('created_at', `${today}T00:00:00`),
-      this.queueService.getQueueStats(),
+      this.queueService ? this.queueService.getQueueStats() : Promise.resolve({ download: { waiting: 0, active: 0, completed: 0, failed: 0 }, metadata: { waiting: 0, active: 0 }, processing: { waiting: 0, active: 0 } }),
       this.supabase.getAdminClient().from('downloads').select('file_size_bytes').eq('status', 'completed'),
     ]);
 

@@ -14,6 +14,30 @@ import { FfmpegModule } from './modules/ffmpeg/ffmpeg.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AdminModule } from './modules/admin/admin.module';
 
+// Redis is required for production, optional for local dev
+const isDev = process.env.NODE_ENV !== 'production';
+const hasRedis = !!process.env.REDIS_URL || !!process.env.REDIS_HOST;
+
+const bullImports = hasRedis
+  ? [
+      BullModule.forRootAsync({
+        useFactory: () => {
+          const redisUrl = process.env.REDIS_URL;
+          if (redisUrl) {
+            return { redis: redisUrl };
+          }
+          return {
+            redis: {
+              host: process.env.REDIS_HOST || 'localhost',
+              port: parseInt(process.env.REDIS_PORT || '6379', 10),
+              password: process.env.REDIS_PASSWORD || undefined,
+            },
+          };
+        },
+      }),
+    ]
+  : [];
+
 @Module({
   imports: [
     // Configuration
@@ -31,30 +55,15 @@ import { AdminModule } from './modules/admin/admin.module';
       },
     ]),
 
-    // BullMQ Queue (Redis)
-    BullModule.forRootAsync({
-      useFactory: () => {
-        const redisUrl = process.env.REDIS_URL;
-        if (redisUrl) {
-          return { redis: redisUrl };
-        }
-        return {
-          redis: {
-            host: process.env.REDIS_HOST || 'localhost',
-            port: parseInt(process.env.REDIS_PORT || '6379', 10),
-            password: process.env.REDIS_PASSWORD || undefined,
-          },
-        };
-      },
-    }),
+    // BullMQ Queue (Redis) — only when Redis is available
+    ...bullImports,
 
     // Feature Modules
     HealthModule,
     AuthModule,
     DownloaderModule,
     StorageModule,
-    QueueModule,
-    CacheModule,
+    ...(hasRedis ? [QueueModule, CacheModule] : []),
     FfmpegModule,
     AnalyticsModule,
     AdminModule,

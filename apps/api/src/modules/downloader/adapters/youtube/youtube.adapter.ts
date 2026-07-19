@@ -6,6 +6,7 @@ import { URL } from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+import { pipeline } from 'stream/promises';
 import {
   Platform,
   MediaType,
@@ -430,13 +431,21 @@ export class YouTubeAdapter extends PlatformAdapter {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // Download the file
-    const fileSize = await downloadFile(variant.url, filePath, {
-      timeoutMs: 120_000, // YouTube files can be large
-      headers: {
-        Referer: 'https://www.youtube.com/',
-      },
-    });
+    // Download using ytdl-core stream (handles cipher internally)
+    let fileSize: number;
+    try {
+      const stream = this.ytdlService.createStream(parsedUrl.originalUrl, quality);
+      const writeStream = fs.createWriteStream(filePath);
+      await pipeline(stream, writeStream);
+      fileSize = fs.statSync(filePath).size;
+    } catch (streamErr) {
+      this.logger.warn(`ytdl stream failed: ${(streamErr as Error).message} — falling back to HTTP`);
+      // Fallback: raw HTTP download
+      fileSize = await downloadFile(variant.url, filePath, {
+        timeoutMs: 120_000,
+        headers: { Referer: 'https://www.youtube.com/' },
+      });
+    }
 
     this.logger.debug(`Downloaded ${fileSize} bytes to ${filePath}`);
 

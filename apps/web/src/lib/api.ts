@@ -21,9 +21,13 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor — handle errors globally
+// Response interceptor — handle errors globally and unwrap {success, data} envelope
 api.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    // API wraps all responses in {success: true, data: ...} — unwrap to just the data
+    const body = response.data;
+    return body?.success !== undefined && body?.data !== undefined ? body.data : body;
+  },
   (error) => {
     const message = error.response?.data?.error?.message || error.message || 'An error occurred';
     return Promise.reject(new Error(Array.isArray(message) ? message[0] : message));
