@@ -29,7 +29,7 @@ interface MediaMetadata {
 export function useDownload() {
   const [metadata, setMetadata] = useState<MediaMetadata | null>(null);
   const [downloadProgress, setDownloadProgress] = useState({
-    step: 'metadata' as const,
+    step: 'metadata' as 'metadata' | 'downloading' | 'processing' | 'uploading' | 'complete',
     percent: 0,
     message: '',
   });
