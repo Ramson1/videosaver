@@ -11,14 +11,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { PlatformId } from "@/types";
+import type { Platform } from "@/types";
 
 // ============================================================
 // PlatformIcon - Maps platform IDs to Lucide icons
 // ============================================================
 
 interface PlatformIconProps {
-  platform: PlatformId | string;
+  platform: Platform | string;
   size?: number;
   className?: string;
   showBg?: boolean;
