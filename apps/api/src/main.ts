@@ -15,8 +15,8 @@ async function bootstrap() {
   });
 
   const config = app.get(ConfigService);
-  const port = config.get<number>('PORT', 4000);
-  const isProduction = config.get<string>('NODE_ENV') === 'production';
+  const port = parseInt(process.env.PORT || '4000', 10);
+  const isProduction = process.env.NODE_ENV === 'production';
 
   // Security
   app.use(
