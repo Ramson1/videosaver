@@ -5,7 +5,8 @@ describe('TwitterAdapter', () => {
   let adapter: TwitterAdapter;
 
   beforeEach(() => {
-    adapter = new TwitterAdapter();
+    const mockYtdlpService = { isAvailable: () => false, buildMetadata: async () => null } as any;
+    adapter = new TwitterAdapter(mockYtdlpService);
   });
 
   // ──────────────────────────────────────────────

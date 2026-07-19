@@ -16,6 +16,7 @@ import {
   DownloadResult,
 } from '../../../../common/interfaces/platform.interface';
 import { PlatformAdapter } from '../platform-adapter';
+import { YtdlpService } from '../../services/ytdlp.service';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -308,7 +309,10 @@ export class TikTokAdapter extends PlatformAdapter {
 
   private readonly logger = new Logger(TikTokAdapter.name);
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly ytdlpService: YtdlpService,
+  ) {
     super();
   }
 
@@ -387,6 +391,22 @@ export class TikTokAdapter extends PlatformAdapter {
 
   async extractMetadata(parsedUrl: ParsedUrl): Promise<MediaMetadata> {
     this.logger.debug(`Extracting metadata for TikTok URL: ${parsedUrl.originalUrl}`);
+
+    // --- Primary: Use yt-dlp if available ---
+    if (this.ytdlpService.isAvailable()) {
+      try {
+        const metadata = await this.ytdlpService.buildMetadata(parsedUrl.originalUrl);
+        if (metadata && metadata.variants.length > 0) {
+          this.logger.debug(`yt-dlp extracted ${metadata.variants.length} variants for TikTok`);
+          return metadata;
+        }
+        this.logger.debug('yt-dlp returned no variants, falling back to scraping');
+      } catch (err) {
+        this.logger.warn(`yt-dlp failed for TikTok: ${(err as Error).message} — falling back to scraping`);
+      }
+    }
+
+    // --- Fallback: Original scraping approach ---
 
     // Resolve short URLs to their canonical form
     let resolvedUrl = parsedUrl.normalizedUrl;

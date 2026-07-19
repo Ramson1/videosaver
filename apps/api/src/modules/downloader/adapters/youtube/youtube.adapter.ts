@@ -16,6 +16,7 @@ import {
   DownloadResult,
 } from '../../../../common/interfaces/platform.interface';
 import { PlatformAdapter } from '../platform-adapter';
+import { YtdlService } from '../../services/ytdl.service';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -272,7 +273,10 @@ export class YouTubeAdapter extends PlatformAdapter {
 
   private readonly logger = new Logger(YouTubeAdapter.name);
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly ytdlService: YtdlService,
+  ) {
     super();
   }
 
@@ -340,36 +344,25 @@ export class YouTubeAdapter extends PlatformAdapter {
 
     const mediaId = parsedUrl.mediaId;
 
-    // --- Step 1: Fetch oEmbed data (public, legal, no auth required) ---
+    // --- Primary: Use ytdl-core for reliable metadata + stream extraction ---
+    try {
+      const metadata = await this.ytdlService.buildMetadata(parsedUrl.originalUrl);
+      if (metadata.variants.length > 0) {
+        this.logger.debug(`ytdl-core extracted ${metadata.variants.length} variants for ${mediaId}`);
+        return metadata;
+      }
+      this.logger.debug('ytdl-core returned no variants, falling back to scraping');
+    } catch (err) {
+      this.logger.warn(`ytdl-core failed for ${mediaId}: ${(err as Error).message} — falling back to scraping`);
+    }
+
+    // --- Fallback: Original scraping approach ---
     const oembed = await this.fetchOEmbed(mediaId);
-
-    // --- Step 2: Fetch the watch page to check for restrictions ---
     const restrictionInfo = await this.checkRestrictions(mediaId);
-
-    // Determine if the content is downloadable.
-    // We mark content as NOT downloadable when:
-    //   - It is age-restricted / requires login
-    //   - It is private / unlisted with no public access
-    //   - It has been removed or is region-blocked
-    //   - It is a live stream (not a VOD)
-    //
-    // YouTube's Terms of Service restrict automated downloading of content
-    // unless a download button/link is explicitly provided by YouTube.
-    // This adapter provides metadata retrieval via the public oEmbed API
-    // and only attempts downloads where legally permitted.
     const isDownloadable = restrictionInfo.isDownloadable;
     const restrictionReason = restrictionInfo.reason;
-
-    // Build variants from the page data (if downloadable)
-    const variants = isDownloadable
-      ? await this.buildVariants(mediaId)
-      : [];
-
-    // Determine media type
-    const isShort = this.isShortUrl(parsedUrl.originalUrl);
+    const variants = isDownloadable ? await this.buildVariants(mediaId) : [];
     const mediaType = MediaType.VIDEO;
-
-    // Author info from oEmbed
     const author = {
       name: oembed?.author_name ?? 'Unknown',
       username: oembed?.author_url

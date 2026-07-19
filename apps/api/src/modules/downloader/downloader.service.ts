@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { ConfigService } from '@nestjs/config';
 import { UrlDetectorService } from './url-detector.service';
 import { PlatformAdapter } from './adapters/platform-adapter';
+import { GenericYtdlpAdapter } from './adapters/generic-ytdlp.adapter';
 import {
   Platform,
   Quality,
@@ -32,6 +33,7 @@ export class DownloaderService {
   constructor(
     private readonly urlDetector: UrlDetectorService,
     private readonly config: ConfigService,
+    private readonly genericYtdlpAdapter: GenericYtdlpAdapter,
   ) {}
 
   /**
@@ -69,7 +71,22 @@ export class DownloaderService {
 
       return metadata;
     } catch (error) {
-      this.logger.error(`Metadata extraction failed for ${url}`, error);
+      this.logger.warn(
+        `Metadata extraction failed for ${url} via ${adapter.displayName}: ${(error as Error).message}`,
+      );
+
+      // Fallback: try generic yt-dlp adapter if available
+      if (await this.genericYtdlpAdapter.isAvailable()) {
+        this.logger.log(`Falling back to yt-dlp for: ${url}`);
+        try {
+          const metadata = await this.genericYtdlpAdapter.extractMetadata(parsed);
+          this.logger.log(`yt-dlp fallback succeeded for: ${url}`);
+          return metadata;
+        } catch (fallbackError) {
+          this.logger.error(`yt-dlp fallback also failed for ${url}`, fallbackError);
+        }
+      }
+
       throw new BadRequestException(
         `Failed to extract metadata: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
@@ -119,7 +136,34 @@ export class DownloaderService {
         result,
       };
     } catch (error) {
-      this.logger.error(`Download failed: ${jobId}`, error);
+      this.logger.warn(
+        `Download failed for ${url} via ${adapter.displayName}: ${(error as Error).message}`,
+      );
+
+      // Fallback: try generic yt-dlp adapter if available
+      if (await this.genericYtdlpAdapter.isAvailable()) {
+        this.logger.log(`Falling back to yt-dlp for download: ${url}`);
+        try {
+          const outputDir = this.config.get<string>('app.storage.tempDir', './tmp/downloads');
+          const metadata = await this.genericYtdlpAdapter.extractMetadata(parsed);
+
+          if (!metadata.isDownloadable) {
+            return {
+              jobId,
+              status: JobStatus.FAILED,
+              metadata,
+              error: metadata.restrictionReason || 'Content is not downloadable',
+            };
+          }
+
+          const result = await this.genericYtdlpAdapter.download(parsed, quality, outputDir);
+          this.logger.log(`yt-dlp fallback download completed: ${jobId}`);
+          return { jobId, status: JobStatus.COMPLETED, metadata, result };
+        } catch (fallbackError) {
+          this.logger.error(`yt-dlp fallback download also failed for ${url}`, fallbackError);
+        }
+      }
+
       return {
         jobId,
         status: JobStatus.FAILED,

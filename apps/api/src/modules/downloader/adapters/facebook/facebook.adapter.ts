@@ -6,6 +6,7 @@ import { mkdir, stat } from 'fs/promises';
 import { join, extname } from 'path';
 
 import { PlatformAdapter } from '../platform-adapter';
+import { YtdlpService } from '../../services/ytdlp.service';
 import {
   DownloadResult,
   MediaMetadata,
@@ -51,7 +52,10 @@ export class FacebookAdapter extends PlatformAdapter {
   private readonly logger = new Logger(FacebookAdapter.name);
   private uaIndex = 0;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly ytdlpService: YtdlpService,
+  ) {
     super();
   }
 
@@ -185,6 +189,21 @@ export class FacebookAdapter extends PlatformAdapter {
   // ---------------------------------------------------------------------------
 
   async extractMetadata(parsedUrl: ParsedUrl): Promise<MediaMetadata> {
+    // --- Primary: Use yt-dlp if available ---
+    if (this.ytdlpService.isAvailable()) {
+      try {
+        const metadata = await this.ytdlpService.buildMetadata(parsedUrl.originalUrl);
+        if (metadata && metadata.variants.length > 0) {
+          this.logger.debug(`yt-dlp extracted ${metadata.variants.length} variants for Facebook`);
+          return metadata;
+        }
+        this.logger.debug('yt-dlp returned no variants, falling back to scraping');
+      } catch (err) {
+        this.logger.warn(`yt-dlp failed for Facebook: ${(err as Error).message} — falling back to scraping`);
+      }
+    }
+
+    // --- Fallback: Original scraping approach ---
     const notDownloadable: MediaMetadata = {
       platform: Platform.FACEBOOK,
       mediaId: parsedUrl.mediaId,

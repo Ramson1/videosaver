@@ -10,6 +10,7 @@ import { TwitterAdapter } from './adapters/twitter/twitter.adapter';
 import { LinkedInAdapter } from './adapters/linkedin/linkedin.adapter';
 import { SnapchatAdapter } from './adapters/snapchat/snapchat.adapter';
 import { WhatsAppAdapter } from './adapters/whatsapp/whatsapp.adapter';
+import { GenericYtdlpAdapter } from './adapters/generic-ytdlp.adapter';
 
 /**
  * Detects the platform from a given URL and delegates to the appropriate adapter.
@@ -29,7 +30,9 @@ export class UrlDetectorService {
     private readonly linkedinAdapter: LinkedInAdapter,
     private readonly snapchatAdapter: SnapchatAdapter,
     private readonly whatsappAdapter: WhatsAppAdapter,
+    private readonly genericYtdlpAdapter: GenericYtdlpAdapter,
   ) {
+    // Platform-specific adapters first, generic yt-dlp fallback last
     this.adapters = [
       facebookAdapter,
       instagramAdapter,
@@ -40,6 +43,7 @@ export class UrlDetectorService {
       linkedinAdapter,
       snapchatAdapter,
       whatsappAdapter,
+      genericYtdlpAdapter, // fallback — only matches if yt-dlp is available
     ];
   }
 

@@ -5,7 +5,8 @@ describe('LinkedInAdapter', () => {
   let adapter: LinkedInAdapter;
 
   beforeEach(() => {
-    adapter = new LinkedInAdapter();
+    const mockYtdlpService = { isAvailable: () => false, buildMetadata: async () => null } as any;
+    adapter = new LinkedInAdapter(mockYtdlpService);
   });
 
   // ──────────────────────────────────────────────

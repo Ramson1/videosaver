@@ -10,6 +10,7 @@ import {
   DownloadResult,
 } from '../../../../common/interfaces/platform.interface';
 import { PlatformAdapter } from '../platform-adapter';
+import { YtdlpService } from '../../services/ytdlp.service';
 
 /**
  * Content type detected from a Snapchat URL.
@@ -56,6 +57,10 @@ export class SnapchatAdapter extends PlatformAdapter {
     // General snapchat.com/watch for spotlight
     /(?:https?:\/\/)?(?:www\.)?snapchat\.com\/watch\/([\w-]+)/i,
   ];
+
+  constructor(private readonly ytdlpService: YtdlpService) {
+    super();
+  }
 
   /**
    * Check if the Snapchat adapter can currently reach Snapchat's public endpoints.
@@ -141,6 +146,21 @@ export class SnapchatAdapter extends PlatformAdapter {
    * that metadata and construct a MediaMetadata object.
    */
   async extractMetadata(parsedUrl: ParsedUrl): Promise<MediaMetadata> {
+    // --- Primary: Use yt-dlp if available ---
+    if (this.ytdlpService.isAvailable()) {
+      try {
+        const metadata = await this.ytdlpService.buildMetadata(parsedUrl.originalUrl);
+        if (metadata && metadata.variants.length > 0) {
+          this.logger.debug(`yt-dlp extracted ${metadata.variants.length} variants for Snapchat`);
+          return metadata;
+        }
+        this.logger.debug('yt-dlp returned no variants, falling back to scraping');
+      } catch (err) {
+        this.logger.warn(`yt-dlp failed for Snapchat: ${(err as Error).message} — falling back to scraping`);
+      }
+    }
+
+    // --- Fallback: Original scraping approach ---
     if (!parsedUrl.isValid) {
       throw new Error(`Cannot extract metadata from invalid URL: ${parsedUrl.error}`);
     }

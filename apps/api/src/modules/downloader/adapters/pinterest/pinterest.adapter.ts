@@ -9,6 +9,7 @@ import {
   DownloadResult,
 } from '../../../../common/interfaces/platform.interface';
 import { PlatformAdapter } from '../platform-adapter';
+import { YtdlpService } from '../../services/ytdlp.service';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
@@ -52,6 +53,10 @@ export class PinterestAdapter extends PlatformAdapter {
   readonly urlPatterns: RegExp[] = [
     /^https?:\/\/(www\.|vm?\.)?(pinterest\.com|pinterest\.co\.\w+|pin\.it)\/.+/i,
   ];
+
+  constructor(private readonly ytdlpService: YtdlpService) {
+    super();
+  }
 
   // ──────────────────────────────────────────────
   //  Availability
@@ -142,6 +147,21 @@ export class PinterestAdapter extends PlatformAdapter {
   // ──────────────────────────────────────────────
 
   async extractMetadata(parsedUrl: ParsedUrl): Promise<MediaMetadata> {
+    // --- Primary: Use yt-dlp if available ---
+    if (this.ytdlpService.isAvailable()) {
+      try {
+        const metadata = await this.ytdlpService.buildMetadata(parsedUrl.originalUrl);
+        if (metadata && metadata.variants.length > 0) {
+          this.logger.debug(`yt-dlp extracted ${metadata.variants.length} variants for Pinterest`);
+          return metadata;
+        }
+        this.logger.debug('yt-dlp returned no variants, falling back to scraping');
+      } catch (err) {
+        this.logger.warn(`yt-dlp failed for Pinterest: ${(err as Error).message} — falling back to scraping`);
+      }
+    }
+
+    // --- Fallback: Original scraping approach ---
     if (!parsedUrl.isValid) {
       throw new Error(`Cannot extract metadata from invalid URL: ${parsedUrl.error}`);
     }

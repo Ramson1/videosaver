@@ -32,12 +32,15 @@ RUN npm run build --workspace=apps/api
 FROM node:20-alpine AS production
 WORKDIR /app
 
-# Install FFmpeg and runtime dependencies
+# Install FFmpeg, yt-dlp and runtime dependencies
 RUN apk add --no-cache \
     ffmpeg \
     wget \
     curl \
+    python3 \
+    py3-pip \
     tini \
+    && pip3 install --break-system-packages yt-dlp \
     && addgroup -g 1001 -S nodejs \
     && adduser -S nodejs -u 1001
 

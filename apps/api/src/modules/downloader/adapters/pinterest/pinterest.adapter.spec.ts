@@ -5,7 +5,8 @@ describe('PinterestAdapter', () => {
   let adapter: PinterestAdapter;
 
   beforeEach(() => {
-    adapter = new PinterestAdapter();
+    const mockYtdlpService = { isAvailable: () => false, buildMetadata: async () => null } as any;
+    adapter = new PinterestAdapter(mockYtdlpService);
   });
 
   // ──────────────────────────────────────────────
