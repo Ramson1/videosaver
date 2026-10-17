@@ -5,83 +5,59 @@ import { useMutation } from '@tanstack/react-query';
 import { downloadApi } from '@/lib/api';
 import { toast } from 'sonner';
 
-interface MediaMetadata {
-  platform: string;
-  mediaId: string;
+interface VideoMetadata {
+  id: string;
   title: string;
-  author: { name: string; username?: string };
-  thumbnailUrl?: string;
+  thumbnail?: string;
   duration?: number;
-  mediaType: string;
-  variants: Array<{
-    quality: string;
-    format: string;
-    hasVideo: boolean;
-    hasAudio: boolean;
-    width?: number;
-    height?: number;
-    fileSize?: number;
+  uploader?: string;
+  formats: Array<{
+    format_id: string;
+    ext: string;
+    resolution: string;
+    filesize?: number;
+    vcodec?: string;
+    acodec?: string;
   }>;
-  isDownloadable: boolean;
-  restrictionReason?: string;
+}
+
+interface DownloadResult {
+  filename: string;
+  filepath: string;
+  title: string;
 }
 
 export function useDownload() {
-  const [metadata, setMetadata] = useState<MediaMetadata | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState({
-    step: 'metadata' as 'metadata' | 'downloading' | 'processing' | 'uploading' | 'complete',
-    percent: 0,
-    message: '',
-  });
+  const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
+  const [downloadResult, setDownloadResult] = useState<DownloadResult | null>(null);
 
-  const extractMetadataMutation = useMutation({
+  const metadataMutation = useMutation({
     mutationFn: (url: string) => downloadApi.getMetadata(url),
-    onSuccess: (data: any) => {
-      setMetadata(data);
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to extract metadata');
-    },
+    onSuccess: (data: any) => setMetadata(data),
+    onError: (error: Error) => toast.error(error.message || 'Failed to fetch metadata'),
   });
 
   const downloadMutation = useMutation({
-    mutationFn: ({ url, quality }: { url: string; quality: string }) =>
+    mutationFn: ({ url, quality }: { url: string; quality?: string }) =>
       downloadApi.download(url, quality),
-    onMutate: () => {
-      setDownloadProgress({ step: 'metadata', percent: 10, message: 'Starting download...' });
-    },
     onSuccess: (data: any) => {
-      setDownloadProgress({ step: 'complete', percent: 100, message: 'Download complete!' });
-
-      if (data?.result?.signedUrl) {
-        // Trigger browser download
-        window.open(data.result.signedUrl, '_blank');
-      }
-
-      toast.success('Download ready!');
+      setDownloadResult(data);
+      toast.success('Download complete!');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Download failed');
-      setDownloadProgress({ step: 'metadata', percent: 0, message: '' });
-    },
+    onError: (error: Error) => toast.error(error.message || 'Download failed'),
   });
 
-  const extractMetadata = useCallback(
+  const getMetadata = useCallback(
     async (url: string) => {
       setMetadata(null);
-      await extractMetadataMutation.mutateAsync(url);
+      setDownloadResult(null);
+      await metadataMutation.mutateAsync(url);
     },
-    [extractMetadataMutation],
+    [metadataMutation],
   );
 
-  const startDownload = useCallback(
-    async (url: string, quality: string) => {
-      setDownloadProgress({ step: 'downloading', percent: 30, message: 'Downloading media...' });
-
-      // Simulate progress steps
-      setTimeout(() => setDownloadProgress({ step: 'processing', percent: 60, message: 'Processing file...' }), 1000);
-      setTimeout(() => setDownloadProgress({ step: 'uploading', percent: 80, message: 'Preparing download link...' }), 2000);
-
+  const download = useCallback(
+    async (url: string, quality?: string) => {
       await downloadMutation.mutateAsync({ url, quality });
     },
     [downloadMutation],
@@ -89,16 +65,16 @@ export function useDownload() {
 
   const reset = useCallback(() => {
     setMetadata(null);
-    setDownloadProgress({ step: 'metadata', percent: 0, message: '' });
+    setDownloadResult(null);
   }, []);
 
   return {
     metadata,
-    isExtracting: extractMetadataMutation.isPending,
+    downloadResult,
+    isFetchingMetadata: metadataMutation.isPending,
     isDownloading: downloadMutation.isPending,
-    downloadProgress,
-    extractMetadata,
-    startDownload,
+    getMetadata,
+    download,
     reset,
   };
 }

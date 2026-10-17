@@ -1,187 +1,99 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { UrlDetectorService } from './url-detector.service';
-import { PlatformAdapter } from './adapters/platform-adapter';
-import { GenericYtdlpAdapter } from './adapters/generic-ytdlp.adapter';
-import {
-  Platform,
-  Quality,
-  MediaMetadata,
-  DownloadResult,
-  ParsedUrl,
-  JobStatus,
-} from '../../common/interfaces/platform.interface';
+import { Injectable, Logger, BadRequestException, OnModuleInit } from '@nestjs/common';
+import { getVideoInfo, selectFormat, downloadVideo } from 'yt-dlp.ts';
+import * as path from 'path';
+import * as fs from 'fs';
 
-export interface DownloadRequest {
-  url: string;
-  quality?: Quality;
-  userId?: string;
-}
+const DOWNLOAD_DIR = path.join(process.cwd(), 'downloads');
 
-export interface DownloadResponse {
-  jobId: string;
-  status: JobStatus;
-  metadata?: MediaMetadata;
-  result?: DownloadResult;
-  error?: string;
-}
+// Add yt-dlp and deno to PATH
+const ytdlpPath = path.join(
+  process.env.LOCALAPPDATA || '',
+  'Python', 'pythoncore-3.14-64', 'Scripts',
+);
+const denoPath = path.join(
+  process.env.LOCALAPPDATA || '',
+  'Microsoft', 'WinGet', 'Links',
+);
+[ytdlpPath, denoPath].forEach((p) => {
+  if (p && !process.env.PATH?.includes(p)) {
+    process.env.PATH = `${process.env.PATH || ''};${p}`;
+  }
+});
 
 @Injectable()
-export class DownloaderService {
+export class DownloaderService implements OnModuleInit {
   private readonly logger = new Logger(DownloaderService.name);
 
-  constructor(
-    private readonly urlDetector: UrlDetectorService,
-    private readonly config: ConfigService,
-    private readonly genericYtdlpAdapter: GenericYtdlpAdapter,
-  ) {}
-
-  /**
-   * Detect platform from URL and return parsed info.
-   */
-  detectPlatform(url: string): ParsedUrl {
-    const parsed = this.urlDetector.parseUrl(url);
-    if (!parsed.isValid) {
-      throw new BadRequestException(parsed.error || 'Invalid or unsupported URL');
-    }
-    return parsed;
-  }
-
-  /**
-   * Extract metadata from a URL.
-   */
-  async extractMetadata(url: string): Promise<MediaMetadata> {
-    const parsed = this.detectPlatform(url);
-    const adapter = this.urlDetector.getAdapter(parsed.platform);
-
-    if (!adapter) {
-      throw new NotFoundException(`No adapter found for platform: ${parsed.platform}`);
-    }
-
-    this.logger.log(`Extracting metadata from ${parsed.platform}: ${parsed.mediaId}`);
-
-    try {
-      const metadata = await adapter.extractMetadata(parsed);
-
-      if (!metadata.isDownloadable) {
-        this.logger.warn(
-          `Content not downloadable: ${parsed.platform}/${parsed.mediaId} — ${metadata.restrictionReason}`,
-        );
-      }
-
-      return metadata;
-    } catch (error) {
-      this.logger.warn(
-        `Metadata extraction failed for ${url} via ${adapter.displayName}: ${(error as Error).message}`,
-      );
-
-      // Fallback: try generic yt-dlp adapter if available
-      if (await this.genericYtdlpAdapter.isAvailable()) {
-        this.logger.log(`Falling back to yt-dlp for: ${url}`);
-        try {
-          const metadata = await this.genericYtdlpAdapter.extractMetadata(parsed);
-          this.logger.log(`yt-dlp fallback succeeded for: ${url}`);
-          return metadata;
-        } catch (fallbackError) {
-          this.logger.error(`yt-dlp fallback also failed for ${url}`, fallbackError);
-        }
-      }
-
-      throw new BadRequestException(
-        `Failed to extract metadata: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      );
+  async onModuleInit() {
+    this.logger.log(`yt-dlp PATH: ${ytdlpPath}`);
+    if (!fs.existsSync(DOWNLOAD_DIR)) {
+      fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
     }
   }
 
   /**
-   * Execute a full download pipeline for a URL.
+   * Get video metadata (title, formats, thumbnail, etc.)
    */
-  async download(request: DownloadRequest): Promise<DownloadResponse> {
-    const { url, quality = Quality.HIGHEST } = request;
-    const parsed = this.detectPlatform(url);
-    const adapter = this.urlDetector.getAdapter(parsed.platform);
+  async getMetadata(url: string) {
+    if (!url) throw new BadRequestException('URL is required');
 
-    if (!adapter) {
-      throw new NotFoundException(`No adapter found for platform: ${parsed.platform}`);
-    }
+    this.logger.log(`Fetching metadata for: ${url}`);
+    const info = await getVideoInfo({ url });
 
-    const jobId = this.generateJobId();
-    this.logger.log(`Download job ${jobId}: ${parsed.platform}/${parsed.mediaId} @ ${quality}`);
-
-    try {
-      // Extract metadata first
-      const metadata = await adapter.extractMetadata(parsed);
-
-      if (!metadata.isDownloadable) {
-        return {
-          jobId,
-          status: JobStatus.FAILED,
-          metadata,
-          error: metadata.restrictionReason || 'Content is not downloadable',
-        };
-      }
-
-      // Prepare output directory
-      const outputDir = this.config.get<string>('app.storage.tempDir', './tmp/downloads');
-
-      // Execute download
-      const result = await adapter.download(parsed, quality, outputDir);
-
-      this.logger.log(`Download completed: ${jobId} → ${result.filePath} (${result.fileSize} bytes)`);
-
-      return {
-        jobId,
-        status: JobStatus.COMPLETED,
-        metadata,
-        result,
-      };
-    } catch (error) {
-      this.logger.warn(
-        `Download failed for ${url} via ${adapter.displayName}: ${(error as Error).message}`,
-      );
-
-      // Fallback: try generic yt-dlp adapter if available
-      if (await this.genericYtdlpAdapter.isAvailable()) {
-        this.logger.log(`Falling back to yt-dlp for download: ${url}`);
-        try {
-          const outputDir = this.config.get<string>('app.storage.tempDir', './tmp/downloads');
-          const metadata = await this.genericYtdlpAdapter.extractMetadata(parsed);
-
-          if (!metadata.isDownloadable) {
-            return {
-              jobId,
-              status: JobStatus.FAILED,
-              metadata,
-              error: metadata.restrictionReason || 'Content is not downloadable',
-            };
-          }
-
-          const result = await this.genericYtdlpAdapter.download(parsed, quality, outputDir);
-          this.logger.log(`yt-dlp fallback download completed: ${jobId}`);
-          return { jobId, status: JobStatus.COMPLETED, metadata, result };
-        } catch (fallbackError) {
-          this.logger.error(`yt-dlp fallback download also failed for ${url}`, fallbackError);
-        }
-      }
-
-      return {
-        jobId,
-        status: JobStatus.FAILED,
-        error: error instanceof Error ? error.message : 'Download failed',
-      };
-    }
+    return {
+      id: info.id,
+      title: info.title,
+      thumbnail: info.thumbnail,
+      duration: info.duration,
+      uploader: info.uploader,
+      formats: info.formats?.map((f: any) => ({
+        format_id: f.format_id,
+        ext: f.ext,
+        resolution: f.resolution || `${f.width}x${f.height}`,
+        filesize: f.filesize || f.filesize_approx,
+        vcodec: f.vcodec,
+        acodec: f.acodec,
+      })),
+    };
   }
 
   /**
-   * Get all supported platforms and their capabilities.
+   * Download a video to local disk and return the file path.
    */
-  async getSupportedPlatforms() {
-    return this.urlDetector.getPlatformStatus();
-  }
+  async download(url: string, quality?: string) {
+    if (!url) throw new BadRequestException('URL is required');
 
-  private generateJobId(): string {
-    const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substring(2, 8);
-    return `dl_${timestamp}_${random}`;
+    this.logger.log(`Downloading: ${url} @ ${quality || 'best'}`);
+
+    // Get metadata to select format
+    const info = await getVideoInfo({ url });
+
+    // Select format based on quality preference
+    let format;
+    if (quality === 'audio') {
+      format = selectFormat({ info: info as any, media_type: 'audio', ext: 'mp3' });
+    } else {
+      const resolution = quality || 'max';
+      format = selectFormat({ info: info as any, media_type: 'video', resolution });
+    }
+
+    if (!format) {
+      throw new BadRequestException('No matching format found');
+    }
+
+    // Download
+    const result = await downloadVideo({
+      url,
+      format_id: format.format_id,
+      directory: DOWNLOAD_DIR,
+    });
+
+    const filePath = path.join(DOWNLOAD_DIR, result.filename);
+
+    return {
+      filename: result.filename,
+      filepath: filePath,
+      title: info.title,
+    };
   }
 }
